@@ -8,7 +8,7 @@ export class HealthController {
     this.healthService = new HealthService();
   }
 
-  check = async (req: Request, res: Response): Promise<void> => {
+  check = async (_req: Request, res: Response): Promise<void> => {
     const healthStatus = await this.healthService.getHealthStatus();
     res.status(200).json(healthStatus);
   };

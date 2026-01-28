@@ -24,9 +24,11 @@ if (process.env.NODE_ENV !== 'production') {
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.printf(
-          ({ level, message, timestamp, ...meta }) =>
-            `${timestamp} [${level}]: ${message} ${
-              Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''
+          (info: any) =>
+            `${info.timestamp} [${info.level}]: ${info.message} ${
+              Object.keys(info).filter(k => !['timestamp', 'level', 'message', 'service'].includes(k)).length 
+                ? JSON.stringify(Object.keys(info).filter(k => !['timestamp', 'level', 'message', 'service'].includes(k)).reduce((obj: any, key) => ({ ...obj, [key]: info[key] }), {}), null, 2) 
+                : ''
             }`
         )
       ),
