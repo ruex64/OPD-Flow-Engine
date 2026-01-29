@@ -1,9 +1,38 @@
 # OPD Flow Engine
 
-OPD Token Allocation System with elastic capacity management, prioritization logic, and API endpoints.
+OPD Token Allocation System with elastic capacity management, prioritization logic, and REST API endpoints.
+
+## Features
+
+✅ **Token Booking System**
+- Book tokens for patients with multiple types (Online, Walk-in, Emergency, Follow-up)
+- Real-time slot availability checking
+- Automatic capacity management with emergency overflow support
+
+✅ **Transaction-Safe Operations**
+- MongoDB transactions ensure data consistency
+- Atomic slot count updates during booking/cancellation
+- Rollback support on errors
+
+✅ **RESTful API with Validation**
+- Runtime validation using Zod schemas
+- Comprehensive error handling with appropriate HTTP status codes
+- Structured JSON responses
+
+✅ **Doctor & Slot Management**
+- View all slots for a doctor with availability status
+- Track current capacity vs. maximum capacity
+- Filter available vs. full slots
+
+✅ **Production-Ready Architecture**
+- Clean service-layer pattern
+- TypeScript for type safety
+- Winston logging for debugging
+- Graceful shutdown and error recovery
 
 ## Table of Contents
 
+- [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
@@ -19,6 +48,7 @@ OPD Token Allocation System with elastic capacity management, prioritization log
 - **Framework**: Express.js
 - **Language**: TypeScript
 - **Database**: MongoDB with Mongoose ODM
+- **Validation**: Zod (Runtime type validation)
 - **Logger**: Winston
 - **Security**: Helmet, CORS
 - **Development**: ts-node, nodemon
@@ -49,12 +79,17 @@ OPD-Flow-Engine/
 │   ├── config/
 │   │   └── db.ts                 # MongoDB connection configuration
 │   ├── controllers/
-│   │   └── health.controller.ts  # Health check controller
+│   │   ├── health.controller.ts  # Health check controller
+│   │   ├── token.controller.ts   # Legacy token controller
+│   │   └── tokenController.ts    # Phase 4 token controller with validation
 │   ├── services/
-│   │   └── health.service.ts     # Health check service
+│   │   ├── health.service.ts     # Health check service
+│   │   └── token.service.ts      # Token business logic and transactions
 │   ├── routes/
 │   │   ├── index.ts              # Route aggregator
-│   │   └── health.routes.ts      # Health check routes
+│   │   ├── health.routes.ts      # Health check routes
+│   │   ├── token.routes.ts       # Legacy token routes
+│   │   └── api.ts                # Phase 4 API routes
 │   ├── middleware/
 │   │   └── errorHandler.ts       # Global error handler
 │   ├── models/
@@ -236,6 +271,205 @@ Check if the server is running and healthy.
 curl http://localhost:3000/health
 ```
 
+---
+
+### Token Booking API (Phase 4)
+
+#### Book a Token
+
+**POST** `/api/book`
+
+Book a new token for a patient in a specific slot.
+
+**Request Body:**
+```json
+{
+  "patientName": "John Doe",
+  "patientType": "WALK_IN",
+  "slotId": "507f1f77bcf86cd799439011"
+}
+```
+
+**Parameters:**
+- `patientName` (string, required): Patient name (2-100 characters)
+- `patientType` (enum, required): One of `ONLINE`, `WALK_IN`, `EMERGENCY`, `FOLLOW_UP`
+- `slotId` (string, required): Valid MongoDB ObjectId of the slot
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "message": "Token booked successfully",
+  "token": {
+    "id": "507f1f77bcf86cd799439012",
+    "slotId": "507f1f77bcf86cd799439011",
+    "patientName": "John Doe",
+    "type": "WALK_IN",
+    "status": "BOOKED",
+    "requestTime": "2026-01-29T10:00:00.000Z"
+  },
+  "slot": {
+    "doctorId": "507f1f77bcf86cd799439010",
+    "startTime": "2026-01-29T09:00:00.000Z",
+    "endTime": "2026-01-29T10:00:00.000Z",
+    "currentCount": 5,
+    "maxCapacity": 10,
+    "remainingSlots": 5
+  }
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Validation error or slot not found
+- `409 Conflict`: Slot is full (for non-emergency bookings)
+- `500 Internal Server Error`: Server error
+
+**Examples:**
+```bash
+# Book a walk-in token
+curl -X POST http://localhost:3000/api/book \
+  -H "Content-Type: application/json" \
+  -d '{
+    "patientName": "John Doe",
+    "patientType": "WALK_IN",
+    "slotId": "507f1f77bcf86cd799439011"
+  }'
+
+# Book an emergency token (can exceed capacity)
+curl -X POST http://localhost:3000/api/book \
+  -H "Content-Type: application/json" \
+  -d '{
+    "patientName": "Jane Smith",
+    "patientType": "EMERGENCY",
+    "slotId": "507f1f77bcf86cd799439011"
+  }'
+```
+
+---
+
+#### Cancel a Token
+
+**POST** `/api/cancel/:id`
+
+Cancel an existing token by its ID.
+
+**URL Parameters:**
+- `id` (string, required): Token ID (MongoDB ObjectId)
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "Token cancelled successfully",
+  "token": {
+    "id": "507f1f77bcf86cd799439012",
+    "status": "CANCELLED"
+  }
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid token ID, already cancelled, or already completed
+- `404 Not Found`: Token not found
+- `500 Internal Server Error`: Server error
+
+**Example:**
+```bash
+curl -X POST http://localhost:3000/api/cancel/507f1f77bcf86cd799439012
+```
+
+---
+
+#### Get Doctor Slots
+
+**GET** `/api/doctors/:id/slots`
+
+Retrieve all slots for a specific doctor with availability status.
+
+**URL Parameters:**
+- `id` (string, required): Doctor ID (MongoDB ObjectId)
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "doctor": {
+      "id": "507f1f77bcf86cd799439010",
+      "name": "Dr. Rajesh Kumar",
+      "specialization": "Cardiology"
+    },
+    "slots": [
+      {
+        "id": "507f1f77bcf86cd799439011",
+        "doctorId": "507f1f77bcf86cd799439010",
+        "startTime": "2026-01-29T09:00:00.000Z",
+        "endTime": "2026-01-29T10:00:00.000Z",
+        "maxCapacity": 10,
+        "currentCount": 5,
+        "remainingSlots": 5,
+        "isAvailable": true,
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "507f1f77bcf86cd799439013",
+        "doctorId": "507f1f77bcf86cd799439010",
+        "startTime": "2026-01-29T10:00:00.000Z",
+        "endTime": "2026-01-29T11:00:00.000Z",
+        "maxCapacity": 10,
+        "currentCount": 10,
+        "remainingSlots": 0,
+        "isAvailable": false,
+        "status": "FULL"
+      }
+    ],
+    "totalSlots": 8,
+    "availableSlots": 6
+  }
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid doctor ID format
+- `404 Not Found`: Doctor not found
+- `500 Internal Server Error`: Server error
+
+**Example:**
+```bash
+curl http://localhost:3000/api/doctors/507f1f77bcf86cd799439010/slots
+```
+
+---
+
+### Validation Rules
+
+All Phase 4 endpoints use **Zod** for runtime validation:
+
+- **Patient Name**: 2-100 characters
+- **Patient Type**: Must be one of: `ONLINE`, `WALK_IN`, `EMERGENCY`, `FOLLOW_UP`
+- **MongoDB ObjectIds**: Must match format `/^[0-9a-fA-F]{24}$/`
+- **Slot Existence**: Verified before booking
+- **Doctor Existence**: Verified before retrieving slots
+
+### Error Response Format
+
+All error responses follow this consistent format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "message": "Error description",
+    "details": [
+      {
+        "field": "fieldName",
+        "message": "Specific validation error"
+      }
+    ]
+  }
+}
+```
+
 ## Development Guide
 
 ### Environment Variables
@@ -308,23 +542,36 @@ npm run lint:fix    # Auto-fix issues
 - [x] Database seeding script
 - [x] Data validation and indexes
 
-### Phase 3: Token Allocation API (In Progress)
+### Phase 3: Core Service Logic (Completed)
 
-- [ ] Doctor CRUD endpoints
-- [ ] Slot management endpoints
-- [ ] Token booking endpoints
-- [ ] Token cancellation logic
-- [ ] Slot availability checking
+- [x] Token Service implementation
+- [x] Book token with transaction support
+- [x] Cancel token with slot count adjustment
+- [x] Slot capacity checking
+- [x] Emergency token overflow handling
+- [x] AppError class for structured errors
+- [x] Token and slot query methods
 
-### Phase 4: Queue Management and Prioritization
+### Phase 4: API Controllers and Routes (Completed)
+
+- [x] TokenController with Zod validation
+- [x] POST /api/book endpoint
+- [x] POST /api/cancel/:id endpoint
+- [x] GET /api/doctors/:id/slots endpoint
+- [x] Input validation (patientType, slotId)
+- [x] Error handling (400 vs 409 vs 500)
+- [x] Availability status in slot responses
+- [x] API routes integration
+
+### Phase 5: Queue Management and Prioritization (Planned)
 
 - [ ] Priority queue implementation
-- [ ] Emergency token handling
+- [ ] Emergency token handling enhancement
 - [ ] Follow-up appointment logic
 - [ ] Wait time calculation
 - [ ] Queue position tracking
 
-### Phase 5: Elastic Capacity Management
+### Phase 6: Elastic Capacity Management (Planned)
 
 - [ ] Dynamic capacity adjustment
 - [ ] Peak hours detection
