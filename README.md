@@ -4,27 +4,27 @@ OPD Token Allocation System with elastic capacity management, prioritization log
 
 ## Features
 
-✅ **Token Booking System**
+**Token Booking System**
 - Book tokens for patients with multiple types (Online, Walk-in, Emergency, Follow-up)
 - Real-time slot availability checking
 - Automatic capacity management with emergency overflow support
 
-✅ **Transaction-Safe Operations**
+**Transaction-Safe Operations**
 - MongoDB transactions ensure data consistency
 - Atomic slot count updates during booking/cancellation
 - Rollback support on errors
 
-✅ **RESTful API with Validation**
+**RESTful API with Validation**
 - Runtime validation using Zod schemas
 - Comprehensive error handling with appropriate HTTP status codes
 - Structured JSON responses
 
-✅ **Doctor & Slot Management**
+**Doctor & Slot Management**
 - View all slots for a doctor with availability status
 - Track current capacity vs. maximum capacity
 - Filter available vs. full slots
 
-✅ **Production-Ready Architecture**
+**Production-Ready Architecture**
 - Clean service-layer pattern
 - TypeScript for type safety
 - Winston logging for debugging
@@ -39,8 +39,8 @@ OPD Token Allocation System with elastic capacity management, prioritization log
 - [Getting Started](#getting-started)
 - [Database Setup](#database-setup)
 - [API Documentation](#api-documentation)
-- [Development Guide](#development-guide)
-- [Project Phases](#project-phases)
+- [Configuration](#configuration)
+- [Prioritization Logic](#prioritization-logic--design-trade-offs)
 
 ## Tech Stack
 
@@ -80,16 +80,14 @@ OPD-Flow-Engine/
 │   │   └── db.ts                 # MongoDB connection configuration
 │   ├── controllers/
 │   │   ├── health.controller.ts  # Health check controller
-│   │   ├── token.controller.ts   # Legacy token controller
-│   │   └── tokenController.ts    # Phase 4 token controller with validation
+│   │   └── tokenController.ts    # Token controller with validation
 │   ├── services/
 │   │   ├── health.service.ts     # Health check service
 │   │   └── token.service.ts      # Token business logic and transactions
 │   ├── routes/
 │   │   ├── index.ts              # Route aggregator
 │   │   ├── health.routes.ts      # Health check routes
-│   │   ├── token.routes.ts       # Legacy token routes
-│   │   └── api.ts                # Phase 4 API routes
+│   │   └── api.ts                # API routes
 │   ├── middleware/
 │   │   └── errorHandler.ts       # Global error handler
 │   ├── models/
@@ -99,7 +97,8 @@ OPD-Flow-Engine/
 │   └── utils/
 │       └── logger.ts             # Winston logger configuration
 ├── scripts/
-│   └── seed.ts                   # Database seeding script
+│   ├── seed.ts                   # Database seeding script
+│   └── simulate_day.ts           # Day simulation & proof-of-work script
 ├── logs/                         # Application logs directory
 ├── .env                          # Environment variables
 ├── .env.example                  # Environment variables template
@@ -164,9 +163,50 @@ npm start
 - `npm start` - Start production server from compiled code
 - `npm run start:dev` - Start development server without nodemon
 - `npm run seed` - Seed database with sample data
+- `npm run simulate` - Run day simulation (requires server to be running)
 - `npm run lint` - Run ESLint to check code quality
 - `npm run lint:fix` - Automatically fix ESLint errors
 
+### Running the Simulation
+
+The simulation script demonstrates the system under load with realistic booking patterns.
+
+**Prerequisites:**
+1. Start the server: `npm run dev` (in one terminal)
+2. Seed the database: `npm run seed` (in another terminal)
+
+**Run the simulation:**
+```bash
+npm run simulate
+```
+
+**What it does:**
+- Simulates 25 token booking requests with realistic distribution:
+  - 50% WALK_IN
+  - 30% ONLINE
+  - 15% FOLLOW_UP
+  - 5% EMERGENCY
+- Randomly distributes requests across doctors and time slots
+- Demonstrates emergency overflow handling (elastic capacity)
+- Cancels 20-30% of bookings to show slot recovery
+- Displays comprehensive statistics and final slot utilization
+
+**Sample Output:**
+```
+📋 Booking Statistics:
+   Total Requests: 25
+Booking Statistics:
+   Total Requests: 25
+   Successful: 23
+   Failed: 2
+   Emergency Overbooked: 1
+   Success Rate: 92.0%
+
+Key Observations:
+   - EMERGENCY tokens can exceed capacity (elastic capacity)
+   - Regular tokens are rejected when slot is full
+   - Cancellations free up slots immediately
+   -
 ## Database Setup
 
 ### MongoDB Connection
@@ -470,7 +510,7 @@ All error responses follow this consistent format:
 }
 ```
 
-## Development Guide
+## Configuration
 
 ### Environment Variables
 
@@ -482,7 +522,7 @@ All error responses follow this consistent format:
 | `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/opd-flow-engine` |
 | `CORS_ORIGIN` | Allowed CORS origins | `*` |
 
-### Logging
+### Logging Configuration
 
 The application uses Winston for logging with the following configuration:
 
@@ -520,64 +560,167 @@ npm run lint:fix    # Auto-fix issues
 - **Declaration Files**: Generated
 - **Output Directory**: `dist/`
 
-## Project Phases
+## Prioritization Logic & Design Trade-offs
 
-### Phase 1: Foundation (Completed)
+### Current Implementation
 
-- [x] Project initialization with TypeScript
-- [x] Service-layer architecture setup
-- [x] Express app configuration
-- [x] Middleware setup (Helmet, CORS, JSON parsing)
-- [x] Global error handling
-- [x] Winston logger implementation
-- [x] Health check endpoint
+The OPD Flow Engine implements a **capacity-based prioritization** system with emergency overflow support:
 
-### Phase 2: Data Modeling (Completed)
+#### Token Type Hierarchy
 
-- [x] MongoDB connection setup
-- [x] Mongoose schemas with TypeScript interfaces
-- [x] Doctor model implementation
-- [x] Slot model implementation
-- [x] Token model implementation
-- [x] Database seeding script
-- [x] Data validation and indexes
+1. **EMERGENCY** (Highest Priority)
+   - Can exceed slot capacity (elastic capacity)
+   - Never rejected due to slot being full
+   - Designed for critical medical situations
 
-### Phase 3: Core Service Logic (Completed)
+2. **FOLLOW_UP**
+   - Standard capacity constraints
+   - Tracked separately for analytics
+   - Could be prioritized in future versions
 
-- [x] Token Service implementation
-- [x] Book token with transaction support
-- [x] Cancel token with slot count adjustment
-- [x] Slot capacity checking
-- [x] Emergency token overflow handling
-- [x] AppError class for structured errors
-- [x] Token and slot query methods
+3. **ONLINE**
+   - Pre-scheduled appointments
+   - Subject to capacity limits
+   - First-come, first-served within capacity
 
-### Phase 4: API Controllers and Routes (Completed)
+4. **WALK_IN** (Lowest Priority)
+   - Same capacity rules as ONLINE
+   - Processed in arrival order
+   - Rejected when slot is full
 
-- [x] TokenController with Zod validation
-- [x] POST /api/book endpoint
-- [x] POST /api/cancel/:id endpoint
-- [x] GET /api/doctors/:id/slots endpoint
-- [x] Input validation (patientType, slotId)
-- [x] Error handling (400 vs 409 vs 500)
-- [x] Availability status in slot responses
-- [x] API routes integration
+### Design Decisions & Trade-offs
 
-### Phase 5: Queue Management and Prioritization (Planned)
+#### ✅ Advantages
 
-- [ ] Priority queue implementation
-- [ ] Emergency token handling enhancement
-- [ ] Follow-up appointment logic
-- [ ] Wait time calculation
-- [ ] Queue position tracking
+**1. Simplicity & Clarity**
+- Easy to understand and implement
+- Clear capacity rules reduce confusion
+- Predictable behavior for patients and staff
 
-### Phase 6: Elastic Capacity Management (Planned)
+**2. Transaction Safety**
+- MongoDB transactions ensure data consistency
+- Atomic slot count updates prevent race conditions
+- Rollback support on errors
 
-- [ ] Dynamic capacity adjustment
-- [ ] Peak hours detection
-- [ ] Auto-scaling slot capacity
-- [ ] Analytics and reporting
-- [ ] Performance optimization
+**3. Elastic Capacity for Emergencies**
+- Medical emergencies never turned away
+- Accommodates unpredictable emergency load
+- Balances patient safety with resource management
+
+**4. Fair Allocation**
+- First-come, first-served within each type
+- No complex queue management needed
+- Transparent booking process
+
+#### ⚠️ Trade-offs & Limitations
+
+**1. No Intra-Type Prioritization**
+- **Current**: All WALK_IN tokens treated equally
+- **Trade-off**: Cannot prioritize within same token type
+- **Impact**: Senior citizens, pregnant women, etc. not prioritized
+- **Future Solution**: Add priority score field within each type
+
+**2. Limited Wait Time Optimization**
+- **Current**: Slots filled in request order
+- **Trade-off**: No intelligent slot allocation based on wait time
+- **Impact**: Some patients may wait longer than necessary
+- **Future Solution**: Implement queue position tracking and estimation
+
+**3. Emergency Overbooking Risk**
+- **Current**: Emergency tokens can exceed capacity indefinitely
+- **Trade-off**: Could lead to extreme overcrowding
+- **Impact**: Degraded service quality for all patients
+- **Future Solution**: Set soft limits (e.g., 150% capacity) with alerts
+
+**4. No Load Balancing Across Slots**
+- **Current**: Patients pick specific slots
+- **Trade-off**: Popular slots fill quickly, adjacent slots remain empty
+- **Impact**: Uneven distribution, longer overall wait times
+- **Future Solution**: Suggest alternative nearby slots when full
+
+**5. Static Capacity Per Slot**
+- **Current**: Fixed maxCapacity (e.g., 10) per slot
+- **Trade-off**: Cannot adapt to varying demand patterns
+- **Impact**: Inefficient resource utilization during off-peak hours
+- **Future Solution**: Dynamic capacity based on historical patterns
+
+**6. Cancellation Handling**
+- **Current**: Immediate slot release, no penalty or rescheduling
+- **Trade-off**: Potential for gaming the system
+- **Impact**: Last-minute cancellations waste slot capacity
+- **Future Solution**: Cancellation fees, rescheduling options, waitlist
+
+### Scalability Considerations
+
+**Concurrent Booking Handling**
+- MongoDB transactions prevent double-booking
+- Optimistic concurrency control via Mongoose
+- May need distributed locking for very high concurrency (>1000 req/s)
+
+**Database Performance**
+- Indexed queries on doctorId, slotId, status
+- Compound indexes for common query patterns
+- Large token history may need archival strategy
+
+**API Rate Limiting**
+- Currently no rate limiting implemented
+- Risk: API abuse or DDoS vulnerability
+- Solution: Add rate limiting middleware (e.g., express-rate-limit)
+
+### Recommended Production Enhancements
+
+1. **Priority Scoring System**
+   - Add `priorityScore` field to tokens
+   - Consider: age, medical urgency, wait time, visit frequency
+   - Process tokens in priority order within each slot
+
+2. **Waitlist Mechanism**
+   - Maintain waitlist when slots are full
+   - o-promote when cancellations occur
+   - SMS/email notifications for slot availability
+
+3. **Slot Recommendation Engine**
+   - Suggest alternative time slots when preferred slot is full
+   - Consider: doctor availability, patient history, travel time
+
+4. **Analytics Dashboard**
+   - Track: booking patterns, cancellation rates, wait times
+   - Identify: peak hours, underutilized slots, bottlenecks
+   - Optimize: capacity allocation, staffing levels
+
+5. **Multi-Tenancy Support**
+   - Support multiple hospitals/clinics
+   - Tenant isolation for data security
+   - Configurable capacity rules per tenant
+
+## Future Enhancements
+
+The following enhancements are planned for future releases:
+
+**Queue Management**
+- Priority queue implementation
+- Advanced emergency token handling
+- Queue position tracking
+- Wait time calculation and estimation
+
+**Scheduling Improvements**
+- Follow-up appointment scheduling logic
+- Slot recommendation engine
+- Load balancing across time slots
+
+**Capacity Optimization**
+- Dynamic capacity adjustment
+- Peak hours detection and analytics
+- Auto-scaling slot capacity based on demand
+- Historical pattern analysis
+
+**System Improvements**
+- Performance optimization and caching
+- API rate limiting and throttling
+- Multi-tenancy support
+- Real-time notifications (SMS/Email)
+- Analytics dashboard
+- Reporting and insights
 
 ## License
 
