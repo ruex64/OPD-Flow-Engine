@@ -137,9 +137,15 @@ OPD-Flow-Engine/
 
 4. Update `.env` with your configuration:
    ```env
-   NODE_ENV=development
+   NODE_ENV=production
    PORT=3000
    LOG_LEVEL=info
+   
+   # CORS Configuration
+   # WARNING: CORS_ORIGIN set to * (allow all) intentionally for testing purposes
+   # This is a known security flaw and should be restricted in production environments
+   CORS_ORIGIN=*
+   
    MONGODB_URI=mongodb://localhost:27017/opd-flow-engine
    ```
 
@@ -193,7 +199,7 @@ npm run simulate
 
 **Sample Output:**
 ```
-📋 Booking Statistics:
+ Booking Statistics:
    Total Requests: 25
 Booking Statistics:
    Total Requests: 25
@@ -516,11 +522,13 @@ All error responses follow this consistent format:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NODE_ENV` | Application environment | `development` |
+| `NODE_ENV` | Application environment | `production` |
 | `PORT` | Server port number | `3000` |
 | `LOG_LEVEL` | Winston log level (error, warn, info, debug) | `info` |
 | `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/opd-flow-engine` |
-| `CORS_ORIGIN` | Allowed CORS origins | `*` |
+| `CORS_ORIGIN` | Allowed CORS origins (set to `*` for testing - security flaw) | `*` |
+
+**Security Note**: The `CORS_ORIGIN` is intentionally set to `*` (allow all origins) for testing purposes. This is a known security vulnerability and should be restricted to specific domains in production deployments.
 
 ### Logging Configuration
 
@@ -590,7 +598,7 @@ The OPD Flow Engine implements a **capacity-based prioritization** system with e
 
 ### Design Decisions & Trade-offs
 
-#### ✅ Advantages
+####  Advantages
 
 **1. Simplicity & Clarity**
 - Easy to understand and implement
@@ -612,7 +620,7 @@ The OPD Flow Engine implements a **capacity-based prioritization** system with e
 - No complex queue management needed
 - Transparent booking process
 
-#### ⚠️ Trade-offs & Limitations
+####  Trade-offs & Limitations
 
 **1. No Intra-Type Prioritization**
 - **Current**: All WALK_IN tokens treated equally
@@ -721,7 +729,3 @@ The following enhancements are planned for future releases:
 - Real-time notifications (SMS/Email)
 - Analytics dashboard
 - Reporting and insights
-
-## License
-
-ISC
